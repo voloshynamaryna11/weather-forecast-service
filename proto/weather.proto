@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package weather;
+
+option go_package = "https://github.com/voloshynamaryna11/weather-forecast-service/api/weatherpb";
+
+// WeatherService provides weather forecast operations.
+service WeatherService {
+  // Get the current weather for a given city.
+  rpc GetWeather (GetWeatherRequest) returns (GetWeatherResponse);
+}
+
+// Request message for GetWeather
+message GetWeatherRequest {
+  string city = 1; // City name for weather forecast (required)
+}
+
+// Response message for GetWeather
+message GetWeatherResponse {
+  double temperature = 1;   // Current temperature
+  double humidity = 2;      // Current humidity percentage
+  string description = 3;   // Weather description (e.g., "clear sky")
+}
