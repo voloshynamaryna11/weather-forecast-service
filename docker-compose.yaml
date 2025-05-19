@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  weather-service:
+    build: .
+    container_name: weather-service
+    ports:
+      - "8080:8080"
+    environment:
+      - CONFIG_PATH=/app/local.yaml
+    volumes:
+      - ./local.yaml:/app/local.yaml
+      - ./storage.db:/app/storage.db

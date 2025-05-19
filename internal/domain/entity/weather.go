@@ -10,3 +10,7 @@ type Weather struct {
 	Humidity    float64
 	Date        time.Time
 }
+
+func (Weather) TableName() string {
+	return "weather_models"
+}
