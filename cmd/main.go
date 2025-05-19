@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
-	"weather-forecast-service/internal/config"
 	customHttp "weather-forecast-service/internal/http"
+	"weather-forecast-service/internal/http/handlers"
 	"weather-forecast-service/internal/persistence/repo"
 	"weather-forecast-service/internal/persistence/sqlite"
+	"weather-forecast-service/internal/service"
+	"weather-forecast-service/internal/thirdpaty"
+	"weather-forecast-service/internal/thirdpaty/weather"
 )
 
 func main() {
@@ -20,21 +22,43 @@ func main() {
 		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
 	)
 
-	cfg := config.MustLoad()
-	fmt.Printf("Loaded config: %+v\n", cfg)
+	ctx := context.Background()
+	provider := weather.NewStubProvider()
+	cities := []string{"Kyiv", "Lviv", "Odesa"}
 
-	storage, err := sqlite.New(cfg.StoragePath, log)
+	storagePath := os.Getenv("STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "file:weather.db?_fk=1"
+	}
+	log.Info("using SQLite DSN", "dsn", storagePath)
 
+	storage, err := sqlite.New(storagePath, log)
 	if err != nil {
 		log.Error("failed to init storage", "err", err)
+		os.Exit(1)
 	}
 
-	_ = storage
-
 	wRepo := repo.NewWeatherRepo(storage.DB())
+	sRepo := repo.NewSubscriptionRepo(storage.DB())
+	uRepo := repo.NewUserRepo(storage.DB())
 
-	/* ---------- HTTP router ------------ */
-	router := customHttp.NewRouter(wRepo)
+	fetcher := thirdpaty.NewFetcher(provider, cities, wRepo)
+	fetcher.Start(ctx)
+
+	wSvc := service.NewWeatherService(wRepo)
+	subSvc := service.NewSubscriptionService(sRepo, uRepo)
+
+	weatherH := handlers.NewWeatherHandler(wSvc)
+	subH := handlers.NewSubscribeHandler(subSvc)
+	confirmH := handlers.NewConfirmHandler(subSvc)
+	unsubH := handlers.NewUnsubscribeHandler(subSvc)
+
+	router := customHttp.NewRouter(
+		weatherH,
+		subH,
+		confirmH,
+		unsubH,
+	)
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -52,12 +76,14 @@ func main() {
 	}()
 
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, os.Kill)
+	signal.Notify(quit, os.Interrupt)
 	<-quit
 
-	log.Info("shutting down ...")
+	log.Info("shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(ctx)
-	log.Info("bye")
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("shutdown error", "err", err)
+	}
+	log.Info("server stopped")
 }

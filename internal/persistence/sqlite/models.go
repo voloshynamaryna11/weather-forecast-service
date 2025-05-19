@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"time"
+	"weather-forecast-service/internal/domain/entity"
 	"weather-forecast-service/internal/domain/entity/enum"
 )
 
@@ -16,10 +17,10 @@ type WeatherModel struct {
 
 type SubscriptionModel struct {
 	ID        int64          `gorm:"primaryKey"`
-	UserID    int64          `gorm:"not null;index"`
-	User      UserModel      `gorm:"constraint:OnDelete:CASCADE"`
+	UserID    int64          `gorm:"not null;uniqueIndex:idx_user_city"`
+	User      entity.User    `gorm:"constraint:OnDelete:CASCADE"`
 	Frequency enum.Frequency `gorm:"type:text"`
-	City      string         `gorm:"index:idx_user_city,unique"`
+	City      string         `gorm:"not null;uniqueIndex:idx_user_city"`
 	Confirmed bool
 	CreatedAt time.Time
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"net/mail"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,11 +14,10 @@ import (
 )
 
 var (
-	ErrInvalidFrequency     = errors.New("invalid frequency")
-	ErrAlreadyExists        = errors.New("subscription already exists")
+	ErrAlreadyExists        = errors.New("email already subscribed")
+	ErrConfirmationNeeded   = errors.New("confirm your first subscription")
 	ErrInvalidToken         = errors.New("invalid token")
-	ErrInvalidEmail         = errors.New("invalid email")
-	ErrInvalidCity          = errors.New("city is required")
+	ErrTokenNotFound        = errors.New("token not found")
 	ErrSubscriptionNotFound = errors.New("subscription not found")
 )
 
@@ -39,51 +37,59 @@ func NewSubscriptionService(subRepo repository.SubscriptionRepository, userRepo 
 }
 
 func (s *subscriptionService) Subscribe(ctx context.Context, email, city string, freq enum.Frequency) error {
-
-	//Params validation
-	if email == "" {
-		return ErrInvalidEmail
-	}
-	if _, err := mail.ParseAddress(email); err != nil {
-		return ErrInvalidEmail
-	}
-
-	if city == "" {
-		return ErrInvalidCity
-	}
-
-	if !freq.IsValid() {
-		return ErrInvalidFrequency
-	}
-
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		user = &entity.User{
+		var entityToSave = &entity.User{
 			Email: email,
 			Token: uuid.NewString(),
 		}
-		if err := s.userRepo.Save(ctx, user); err != nil {
+		user, err = s.userRepo.Save(ctx, entityToSave)
+
+		if err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	}
 
+	existing, err := s.subRepo.FindByUserAndCity(ctx, user.ID, city)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err == nil && existing != nil {
+		if existing.Confirmed {
+			return ErrAlreadyExists
+		}
+
+		existing.Frequency = freq
+		existing.CreatedAt = time.Now()
+		return s.subRepo.Update(ctx, existing)
+	}
+
+	subs1, err := s.subRepo.FindByUser(ctx, user.ID, false)
+	subs2, err := s.subRepo.FindByUser(ctx, user.ID, true)
+	if err != nil {
+		return err
+	}
+
+	if len(subs1) >= 1 && len(subs2) == 0 {
+		return ErrConfirmationNeeded
+	}
+
+	confirmed := false
+	if len(subs2) > 0 {
+		confirmed = true
+	}
+
 	sub := &entity.Subscription{
 		UserID:    user.ID,
 		City:      city,
 		Frequency: freq,
-		Confirmed: false,
+		Confirmed: confirmed,
 		CreatedAt: time.Now(),
 	}
-	if err := s.subRepo.Create(ctx, sub); err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) || errors.Is(err, gorm.ErrDuplicatedKey) {
-			return ErrAlreadyExists
-		}
-		return err
-	}
 
-	return nil
+	return s.subRepo.Create(ctx, sub)
 }
 
 func (s *subscriptionService) Confirm(ctx context.Context, token string) error {
@@ -91,12 +97,12 @@ func (s *subscriptionService) Confirm(ctx context.Context, token string) error {
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrInvalidToken
+			return ErrTokenNotFound
 		}
 		return err
 	}
 
-	if err := s.subRepo.Confirm(ctx, u.ID); err != nil {
+	if err := s.subRepo.Confirm(ctx, u.ID, u.Email); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrSubscriptionNotFound
 		}

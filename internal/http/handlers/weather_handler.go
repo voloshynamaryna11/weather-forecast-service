@@ -1,32 +1,35 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
-
+	"weather-forecast-service/internal/http/model"
 	"weather-forecast-service/internal/service"
 )
 
-type WeatherHandler struct{ svc service.WeatherService }
+type WeatherHandler struct {
+	svc service.WeatherService
+}
 
-func New(svc service.WeatherService) *WeatherHandler { return &WeatherHandler{svc: svc} }
+func NewWeatherHandler(svc service.WeatherService) *WeatherHandler {
+	return &WeatherHandler{svc: svc}
+}
 
 func (h *WeatherHandler) Get(w http.ResponseWriter, r *http.Request) {
 	city := r.URL.Query().Get("city")
-	if city == "" {
-		http.Error(w, `{"error":"city is required"}`, http.StatusBadRequest)
-		return
-	}
-	resp, err := h.svc.Get(r.Context(), city)
-	if errors.Is(err, service.ErrNotFound) {
-		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
-		return
-	} else if err != nil {
-		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+	if city == "" || len(city) < 2 {
+		model.WriteError(w, http.StatusBadRequest, "invalid city")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	respData, err := h.svc.Get(r.Context(), city)
+	if errors.Is(err, service.ErrNotFound) {
+		model.WriteError(w, http.StatusNotFound, "City not found")
+		return
+	} else if err != nil {
+		model.WriteError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	model.WriteJSON(w, http.StatusOK, respData)
 }

@@ -21,15 +21,18 @@ func (r *WeatherRepo) Save(ctx context.Context, w *entity.Weather) error {
 	return r.db.WithContext(ctx).Save(sqlite.FromEntityWeather(w)).Error
 }
 
-func (r *WeatherRepo) Find(ctx context.Context, city string, date time.Time) (*entity.Weather, error) {
-	var m sqlite.WeatherModel
+func (r *WeatherRepo) FindInRange(ctx context.Context, city string, from, to time.Time) (*entity.Weather, error) {
+	var w entity.Weather
 	err := r.db.WithContext(ctx).
-		Where("city = ? AND date = ?", city, date).
-		First(&m).Error
+		Where("city = ? AND date BETWEEN ? AND ?", city, from, to).
+		Order("date DESC").
+		First(&w).Error
+
 	if err != nil {
 		return nil, err
 	}
-	return sqlite.ToEntityWeather(&m), nil
+
+	return &w, nil
 }
 
 var _ repository.WeatherRepository = (*WeatherRepo)(nil)

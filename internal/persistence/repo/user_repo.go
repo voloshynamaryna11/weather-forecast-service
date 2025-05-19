@@ -24,8 +24,13 @@ func (r *UserRepo) Get(ctx context.Context, id int64) (*entity.User, error) {
 	return sqlite.ToEntityUser(&m), nil
 }
 
-func (r *UserRepo) Save(ctx context.Context, u *entity.User) error {
-	return r.db.WithContext(ctx).Save(sqlite.FromEntityUser(u)).Error
+func (r *UserRepo) Save(ctx context.Context, u *entity.User) (*entity.User, error) {
+	m := sqlite.FromEntityUser(u)
+	if err := r.db.WithContext(ctx).Save(m).Error; err != nil {
+		return nil, err
+	}
+
+	return sqlite.ToEntityUser(m), nil
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*entity.User, error) {

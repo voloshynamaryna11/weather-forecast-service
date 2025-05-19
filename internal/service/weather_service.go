@@ -29,12 +29,14 @@ func NewWeatherService(repo repository.WeatherRepository) WeatherService {
 }
 
 func (s *weatherService) Get(ctx context.Context, city string) (WeatherResponse, error) {
-	day := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	since := now.Add(-24 * time.Hour)
 
-	w, err := s.repo.Find(ctx, city, day)
+	w, err := s.repo.FindInRange(ctx, city, since, now)
 	if err != nil {
 		return WeatherResponse{}, ErrNotFound
 	}
+
 	return WeatherResponse{
 		Temperature: w.Temperature,
 		Humidity:    w.Humidity,
