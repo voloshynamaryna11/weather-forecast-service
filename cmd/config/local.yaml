@@ -1,9 +1,0 @@
-env: "local"
-storage_path: "" //db
-http_server: {
-          address: "localhost",
-          port: "8082"
-}
-
-timeout: "4s"
-iddle_timeout: "60s"
